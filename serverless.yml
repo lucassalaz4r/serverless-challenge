@@ -1,0 +1,113 @@
+service: serverless-challenge
+
+frameworkVersion: ">=1.1.0"
+
+provider:
+  name: aws
+  runtime: python3.9
+  profile: hackathon
+  region: us-east-1
+  apiGateway:
+    binaryMediaTypes:
+      - '*/*'
+  layers:
+    - arn:aws:lambda:us-east-1:770693421928:layer:Klayers-p39-pillow:1
+  environment:
+    BUCKET_NAME: ${self:service}-${opt:stage, self:provider.stage}-instagrao
+    DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    S3_RULE_PREFIX: uploads/
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+    - Effect: Allow
+      Action:
+        - 's3:GetObject'
+      Resource:
+        - 'arn:aws:s3:::${self:provider.environment.BUCKET_NAME}/*'
+
+functions:
+  extractMetadata:
+    handler: handler.extractMetadata
+    description:
+    memorySize: 128
+    timeout: 30
+    events:
+      - s3:
+          bucket: ${self:provider.environment.BUCKET_NAME}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${self:provider.environment.S3_RULE_PREFIX}
+            - suffix: .jpg
+      - s3:
+          bucket: ${self:provider.environment.BUCKET_NAME}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${self:provider.environment.S3_RULE_PREFIX}
+            - suffix: .jpeg
+      - s3:
+          bucket: ${self:provider.environment.BUCKET_NAME}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${self:provider.environment.S3_RULE_PREFIX}
+            - suffix: .png
+      - s3:
+          bucket: ${self:provider.environment.BUCKET_NAME}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${self:provider.environment.S3_RULE_PREFIX}
+            - suffix: .gif
+  getMetadata:
+    handler: handler.getMetadata
+    description:
+    memorySize: 128
+    timeout: 30
+    events:
+      - http:
+          path: images/metadata/{s3objectkey}
+          method: get
+          cors: true
+  getImage:
+    handler: handler.getImage
+    description:
+    memorySize: 128
+    timeout: 30
+    events:
+      - http:
+          path: images/file/{s3objectkey}
+          method: get
+          cors: true
+  infoImages:
+    handler: handler.infoImages
+    description:
+    memorySize: 128
+    timeout: 30
+    events:
+      - http:
+          path: images/info
+          method: get
+          cors: true
+
+resources:
+  Resources:
+    ImagesDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: s3objectkey
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: s3objectkey
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
